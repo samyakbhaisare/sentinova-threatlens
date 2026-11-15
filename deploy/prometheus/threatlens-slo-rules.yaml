@@ -1,0 +1,92 @@
+# ThreatLens availability SLO — Prometheus recording and alerting rules.
+#
+# NFR-04 target: 99.5% monthly availability for the core API and dashboard.
+# A 30-day window at a 30 s scrape interval is 86,400 readiness evaluations.
+# 99.5% allows 216 minutes (0.5%) of unavailable time per 30-day month.
+#
+# Scrape the API at /metrics. `threatlens_readiness_up` is 1 only when
+# PostgreSQL, Redis and Elasticsearch are all healthy, so it matches the
+# Kubernetes readiness probe (`/health/ready`) and the dashboard dependency.
+# Load this file with:
+#   prometheus --config.file=... --rule-files=deploy/prometheus/threatlens-slo-rules.yaml
+groups:
+  - name: threatlens-availability-slo
+    interval: 30s
+    rules:
+      # Fraction of the trailing 30 days the core API was ready.
+      - record: threatlens:availability:ratio_30d
+        expr: avg_over_time(threatlens_readiness_up[30d])
+
+      # Fraction of the 0.5% error budget still unspent in the trailing 30 days.
+      # 1.0 = full budget, 0.0 = budget exhausted, negative = SLO breached.
+      - record: threatlens:error_budget:remaining_ratio_30d
+        expr: 1 - ((1 - threatlens:availability:ratio_30d) / 0.005)
+
+      # HTTP 5xx ratio for the core API over 5 minutes.
+      - record: threatlens:http_5xx:ratio_5m
+        expr: |
+          sum(rate(threatlens_requests_total{status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(threatlens_requests_total[5m])), 1e-9)
+
+      - alert: ThreatLensAvailabilityBudgetBurnFast
+        expr: threatlens:availability:ratio_30d < 0.995
+        for: 5m
+        labels:
+          severity: critical
+          slo: nfr-04
+        annotations:
+          summary: "ThreatLens 30-day availability is below 99.5%"
+          description: "Trailing 30-day readiness ratio is {{ $value | humanizePercentage }}; the 99.5% SLO budget is exhausted."
+          runbook_url: "docs/OPERATIONS.md#availability-slo-nfr-04"
+
+      - alert: ThreatLensAvailabilityBudgetBurnSlow
+        expr: |
+          (
+            avg_over_time(threatlens_readiness_up[1h])
+            < (0.995 - (14.4 * 0.005))
+          )
+          and
+          (
+            avg_over_time(threatlens_readiness_up[6h])
+            < (0.995 - (6 * 0.005))
+          )
+        for: 30m
+        labels:
+          severity: warning
+          slo: nfr-04
+        annotations:
+          summary: "ThreatLens is burning the monthly availability budget too quickly"
+          description: "Both the 1h and 6h readiness ratios are below the multi-window burn-rate thresholds."
+
+      - alert: ThreatLensDependencyNotReady
+        expr: threatlens_readiness_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          slo: nfr-04
+        annotations:
+          summary: "ThreatLens API readiness is failing"
+          description: "Readiness has been 0 for 2 minutes; at least one of PostgreSQL, Redis or Elasticsearch is unavailable."
+          runbook_url: "docs/OPERATIONS.md#availability-slo-nfr-04"
+
+      - alert: ThreatLensHigh5xxRate
+        expr: threatlens:http_5xx:ratio_5m > 0.01
+        for: 10m
+        labels:
+          severity: warning
+          slo: nfr-04
+        annotations:
+          summary: "ThreatLens API 5xx ratio above 1%"
+          description: "Five-minute 5xx ratio is {{ $value | humanizePercentage }}."
+          runbook_url: "docs/OPERATIONS.md#availability-slo-nfr-04"
+
+      - alert: ThreatLensMetricsStale
+        expr: absent(threatlens_readiness_up)
+        for: 5m
+        labels:
+          severity: critical
+          slo: nfr-04
+        annotations:
+          summary: "ThreatLens metrics are not being scraped"
+          description: "threatlens_readiness_up has been absent for 5 minutes, so availability is unobserved."

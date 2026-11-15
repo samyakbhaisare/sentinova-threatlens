@@ -1,0 +1,29 @@
+# Local kind verification overlay (NFR-11).
+#
+# Purpose: run the real Kubernetes manifests on a single-node kind cluster
+# using the current-source images, with isolated PostgreSQL/Redis/Elasticsearch
+# provided by the `sentinova-verify` Compose project over the
+# `sentinova-verify_default` network that the kind node is attached to.
+#
+# Differences from the production base, all local-only:
+#   - 1 replica per Deployment instead of 2 (single-node resource limits).
+#   - The reports PVC uses ReadWriteOnce; managed cloud storage supplies RWX.
+#   - PRODUCTION=false because this cluster terminates plain HTTP locally.
+#   - The base Ingress is rendered but needs an ingress-nginx controller; this
+#     overlay verifies Services and probes with kubectl port-forward.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: threatlens
+resources:
+  - ../kubernetes
+images:
+  - name: threatlens-api
+    newName: threatlens-api
+    newTag: release
+  - name: threatlens-frontend
+    newName: threatlens-frontend
+    newTag: release
+patches:
+  - path: patch-reports-pvc.yaml
+  - path: patch-scale.yaml
+  - path: patch-production.yaml

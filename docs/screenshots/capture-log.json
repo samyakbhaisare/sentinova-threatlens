@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-11-15T04:50:34Z",
+  "base": "http://localhost:3000",
+  "api": "http://127.0.0.1:8100",
+  "database": "threatlens_demo (isolated demo database, not the production dataset)",
+  "data_source": "created through the application's own ingestion service and HTTP APIs with reserved documentation addresses",
+  "files": [
+    { "file": "login.png", "view": "login", "account": null, "size": "1140x838" },
+    { "file": "dashboard-executive.png", "view": "Executive overview", "account": "demo.executive@sentinova.example", "size": "1120x1625" },
+    { "file": "dashboard-soc.png", "view": "SOC triage", "account": "demo.analyst@sentinova.example", "size": "1120x1483" },
+    { "file": "dashboard-incident-response.png", "view": "Incident response", "account": "demo.responder@sentinova.example", "size": "1120x3143" },
+    { "file": "dashboard-threat-hunting.png", "view": "Threat hunting", "account": "demo.hunter@sentinova.example", "size": "1120x1663" },
+    { "file": "intelligence-library.png", "view": "Intelligence library", "account": "demo.analyst@sentinova.example", "size": "1120x1324" },
+    { "file": "admin-user-management.png", "view": "Identity & access", "account": "demo.admin@sentinova.example", "size": "1120x1685" },
+    { "file": "security-engineer-feeds.png", "view": "Feed operations", "account": "demo.engineer@sentinova.example", "size": "1120x2478" },
+    { "file": "reports.png", "view": "Reports & exports", "account": "demo.analyst@sentinova.example", "size": "1120x1671" },
+    { "file": "audit-trail.png", "view": "Audit trail", "account": "demo.admin@sentinova.example", "size": "1120x838" }
+  ]
+}

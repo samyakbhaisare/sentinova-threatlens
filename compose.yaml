@@ -1,0 +1,108 @@
+name: sentinova-threatlens
+x-app: &app
+  build: ./backend
+  image: sentinova-threatlens-api:${IMAGE_TAG:-verify}
+  env_file: .env
+  environment: &environment
+    DATABASE_URL: postgresql+psycopg://threatlens:${APP_DB_PASSWORD}@postgres:5432/threatlens
+    REDIS_URL: redis://redis:6379/0
+    SEARCH_URL: http://elasticsearch:9200
+    REPORT_DIR: /data/reports
+    SECRETS_DIR: /run/secrets
+  volumes:
+    - reports:/data/reports
+    - ./secrets:/run/secrets:ro
+  restart: unless-stopped
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    redis:
+      condition: service_healthy
+    elasticsearch:
+      condition: service_healthy
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: threatlens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/bootstrap.py first}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Run scripts/bootstrap.py first}
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5433}:5432"]
+    volumes:
+      - postgres:/var/lib/postgresql/data
+      - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d threatlens"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6380}:6379"]
+    volumes: ["redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+    restart: unless-stopped
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.10
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms512m -Xmx512m
+    ports: ["127.0.0.1:${SEARCH_PORT:-9201}:9200"]
+    volumes: ["search:/usr/share/elasticsearch/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      retries: 40
+    restart: unless-stopped
+  migrate:
+    build: ./backend
+    image: sentinova-threatlens-api:${IMAGE_TAG:-verify}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@postgres:5432/threatlens
+    command: ["python", "-m", "app.migrate"]
+    volumes: ["./deploy/grants.sql:/app/grants.sql:ro"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  api:
+    <<: *app
+    ports: ["127.0.0.1:${API_PORT:-8100}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 15s
+      retries: 10
+  worker:
+    <<: *app
+    command: ["celery", "-A", "app.tasks.celery", "worker", "--loglevel=INFO", "--concurrency=2", "-Q", "ingestion,operations"]
+  dispatcher:
+    <<: *app
+    command: ["celery", "-A", "app.tasks.celery", "worker", "--loglevel=INFO", "--concurrency=1", "-Q", "maintenance"]
+  scheduler:
+    <<: *app
+    command: ["celery", "-A", "app.tasks.celery", "beat", "--loglevel=INFO", "--schedule=/tmp/celerybeat-schedule"]
+  frontend:
+    build: ./frontend
+    image: sentinova-threatlens-web:${IMAGE_TAG:-verify}
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    ports: ["127.0.0.1:${FRONTEND_PORT:-3000}:3000"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
+      interval: 15s
+      retries: 10
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  postgres:
+  redis:
+  search:
+  reports:

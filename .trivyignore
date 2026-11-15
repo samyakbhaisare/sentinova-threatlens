@@ -1,0 +1,12 @@
+# pip ships its vendored CycloneDX SBOM inside the API image and that SBOM
+# still names setuptools 70.3.0, so Trivy reports setuptools advisories against
+# the image even though the installed runtime package is newer.
+# Verified in the built image with:
+#   docker run --rm --entrypoint python sentinova-threatlens-api:verify \
+#     -c "import setuptools, pip; print(setuptools.__version__, pip.__version__)"
+#   -> setuptools 84.2.1, pip 26.3
+# Every entry below is fixed in 84.2.1 except GHSA-xmj3-9gf7-h52w, which is a
+# Windows-only path escape and cannot affect these Linux images.
+CVE-2025-47273
+CVE-2026-59890
+GHSA-xmj3-9gf7-h52w

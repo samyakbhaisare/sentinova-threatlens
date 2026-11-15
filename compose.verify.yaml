@@ -1,0 +1,18 @@
+# NFR-11 verification overlay.
+#
+# Runs the current-source release images on isolated host ports without
+# touching the production project's volumes:
+#
+#   $env:IMAGE_TAG='verify'
+#   $env:POSTGRES_PORT='15433'; $env:REDIS_PORT='16380'; $env:SEARCH_PORT='19201'
+#   $env:API_PORT='18100'; $env:FRONTEND_PORT='13000'
+#   docker compose -f compose.yaml -f compose.verify.yaml -p sentinova-verify `
+#     --no-build up -d --wait
+#
+# The current frontend image exposes /healthz and /metrics. Probe 127.0.0.1
+# explicitly: inside the container `localhost` may resolve to IPv6 while
+# Next.js binds IPv4.
+services:
+  frontend:
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/healthz"]
